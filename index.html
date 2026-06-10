@@ -1,0 +1,1485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bazza's PDF → CSV Order Extractor ©</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
+
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --surface-2: #141414;
+    --border: #2a2a2a;
+    --accent: #00e5a0;
+    --accent-dim: #00e5a015;
+    --text: #e8e8e8;
+    --muted: #8a8a8a;
+    --danger: #ff5f5f;
+    --warn: #ffca5f;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    min-height: 100vh;
+    padding: 28px 18px 40px;
+  }
+
+  .wrap { max-width: 1140px; margin: 0 auto; }
+
+  h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--accent);
+    font-size: 1.7rem;
+    margin-bottom: 6px;
+  }
+
+  .sub {
+    color: var(--muted);
+    font-size: 0.88rem;
+    margin-bottom: 22px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  @media (max-width: 920px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+  }
+
+  .label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .drop-zone {
+    position: relative;
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 34px 18px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    background: var(--surface-2);
+  }
+
+  .drop-zone:hover, .drop-zone.over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .drop-zone input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .drop-icon { font-size: 2rem; margin-bottom: 10px; }
+  .drop-zone h2 { font-size: 1rem; margin-bottom: 6px; }
+  .drop-zone p { font-size: 0.82rem; color: var(--muted); }
+
+  .file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border: 1px solid var(--accent);
+    background: var(--accent-dim);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.76rem;
+    color: var(--accent);
+  }
+
+  .file-item .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-item button {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .file-item button:hover { color: var(--danger); }
+
+  .actions {
+    display: grid;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .row-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.83rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    transition: all 0.18s;
+  }
+
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+  .btn-outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+  .btn-outline:hover:not(:disabled) { background: var(--accent-dim); }
+  .btn-danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
+  .btn-danger:hover:not(:disabled) { background: rgba(255,95,95,0.08); }
+
+  #status {
+    margin-top: 12px;
+    min-height: 18px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  #status.ok { color: var(--accent); }
+  #status.err { color: var(--danger); }
+  #status.warn { color: var(--warn); }
+
+  details { margin-top: 12px; }
+
+  summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.74rem;
+  }
+
+  pre {
+    margin-top: 10px;
+    max-height: 360px;
+    overflow: auto;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #101010;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.68rem;
+    color: #9a9a9a;
+    white-space: pre-wrap;
+  }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .pill {
+    padding: 7px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: var(--surface-2);
+  }
+
+  .table-wrap {
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 860px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+  }
+
+  th, td {
+    border-bottom: 1px solid var(--border);
+    padding: 10px 10px;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  th {
+    position: sticky;
+    top: 0;
+    background: #171717;
+    color: var(--accent);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    z-index: 1;
+  }
+
+  tr:hover td { background: var(--accent-dim); }
+
+  .cell-input {
+    width: 100%;
+    background: #111;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 8px 9px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+  }
+
+  .cell-input:focus { outline: none; border-color: var(--accent); }
+
+  .row-remove {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1rem;
+  }
+
+  .row-remove:hover { color: var(--danger); }
+
+  .muted { color: var(--muted); }
+  .small { font-size: 0.73rem; }
+
+  .note {
+    margin-top: 10px;
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Bazza's PDF → CSV Order Extractor ©</h1>
+  <p class="sub">Extract part numbers and quantities from customer purchase order PDFs, review, edit, then export CSV. v8</p>
+
+  <div class="grid">
+    <div class="card">
+      <div class="label">Upload PDFs</div>
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".pdf,.xml,.txt" multiple />
+        <div class="drop-icon">📄</div>
+        <h2>Drop PDFs or TXT, XML here</h2>
+        <p>or click to browse — multiple files supported</p>
+      </div>
+
+      <div class="file-list" id="fileList"></div>
+
+      <div class="actions">
+        <button class="btn btn-primary" id="convertBtn" disabled>EXTRACT ORDERS</button>
+        <div class="row-actions">
+          <button class="btn btn-outline" id="selectAllBtn" disabled>SELECT ALL</button>
+          <button class="btn btn-outline" id="selectNoneBtn" disabled>SELECT NONE</button>
+        </div>
+        <div class="row-actions">
+          <button class="btn btn-danger" id="deleteSelectedBtn" disabled>DELETE SELECTED</button>
+          <button class="btn btn-outline" id="addBlankRowBtn" disabled>ADD BLANK ROW</button>
+        </div>
+        <button class="btn btn-outline" id="saveBtn" disabled>⬇ SAVE SELECTED AS CSV</button>
+      </div>
+
+      <div id="status"></div>
+
+      <details id="debugWrap">
+        <summary>▶ Debug info</summary>
+        <pre id="debugOut"></pre>
+      </details>
+
+      <p class="note">
+        v11: layout-detected single extractor + fleet-factors X-column + VAT header false-break fixes + numeric part numbers.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="label">Preview / edit extracted rows</div>
+
+      <div class="toolbar">
+        <div class="pill" id="rowsPill">0 rows</div>
+        <div class="pill" id="selectedPill">0 selected</div>
+        <div class="pill" id="filesPill">0 files</div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:40px">✔</th>
+              <th style="width:180px">Part Number</th>
+              <th style="width:120px">Qty</th>
+              <th style="width:150px">Source File</th>
+              <th style="width:80px">Page</th>
+              <th style="width:170px">Method</th>
+              <th style="width:60px">Del</th>
+            </tr>
+          </thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+      </div>
+
+      <div class="note small">
+        Preview shows raw extracted values. On CSV export: TUB/TGL/TG prefixes are stripped, 3-digit part numbers are zero-padded (e.g. <span class="muted">920 → 0920</span>, <span class="muted">TGL6508 → 6508</span>).
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let files = [];
+let extractedRows = [];
+
+const fileInput        = document.getElementById('fileInput');
+const dropZone         = document.getElementById('dropZone');
+const fileListEl       = document.getElementById('fileList');
+const convertBtn       = document.getElementById('convertBtn');
+const saveBtn          = document.getElementById('saveBtn');
+const selectAllBtn     = document.getElementById('selectAllBtn');
+const selectNoneBtn    = document.getElementById('selectNoneBtn');
+const deleteSelectedBtn= document.getElementById('deleteSelectedBtn');
+const addBlankRowBtn   = document.getElementById('addBlankRowBtn');
+const statusEl         = document.getElementById('status');
+const previewBody      = document.getElementById('previewBody');
+const debugOut         = document.getElementById('debugOut');
+const rowsPill         = document.getElementById('rowsPill');
+const selectedPill     = document.getElementById('selectedPill');
+const filesPill        = document.getElementById('filesPill');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('over');
+  addFiles([...e.dataTransfer.files].filter(f => isAcceptedFile(f)));
+});
+
+fileInput.addEventListener('change', () => {
+  addFiles([...fileInput.files].filter(f => isAcceptedFile(f)));
+  fileInput.value = '';
+});
+
+convertBtn.addEventListener('click', runExtraction);
+saveBtn.addEventListener('click', saveSelectedCsv);
+
+selectAllBtn.addEventListener('click', () => { extractedRows.forEach(r => r.selected = true); renderRows(); });
+selectNoneBtn.addEventListener('click', () => { extractedRows.forEach(r => r.selected = false); renderRows(); });
+
+deleteSelectedBtn.addEventListener('click', () => {
+  extractedRows = extractedRows.filter(r => !r.selected);
+  renderRows();
+  setStatus('Selected rows removed.', 'warn');
+});
+
+addBlankRowBtn.addEventListener('click', () => {
+  extractedRows.push({ id: uid(), selected: true, part: '', qty: '', source: 'manual', page: '', method: 'manual' });
+  renderRows();
+});
+
+function addFiles(newFiles) {
+  newFiles.forEach(f => {
+    if (!files.find(x => x.name === f.name && x.size === f.size)) files.push(f);
+  });
+  renderFileList();
+  updateControls();
+}
+
+function renderFileList() {
+  fileListEl.innerHTML = '';
+  files.forEach((f, i) => {
+    const div = document.createElement('div');
+    div.className = 'file-item';
+    div.innerHTML = `<span class="name">📎 ${esc(f.name)}</span><button type="button" onclick="removeFile(${i})">×</button>`;
+    fileListEl.appendChild(div);
+  });
+  filesPill.textContent = `${files.length} file${files.length === 1 ? '' : 's'}`;
+}
+
+window.removeFile = function(i) {
+  files.splice(i, 1);
+  renderFileList();
+  if (files.length === 0) { extractedRows = []; renderRows(); setStatus('', ''); }
+  updateControls();
+};
+
+async function runExtraction() {
+  if (!files.length) return;
+  convertBtn.disabled = true;
+  setStatus('Processing PDFs…', '');
+  debugOut.textContent = '';
+
+  try {
+    const allRows = [];
+    for (const file of files) {
+      setStatus(`Reading ${file.name}…`, '');
+      const ext = file.name.split('.').pop().toLowerCase();
+      let rows = [];
+      if (ext === 'xml') {
+        rows = await extractFromXml(file);
+      } else if (ext === 'txt') {
+        rows = await extractFromTxt(file);
+      } else {
+        rows = await extractFromPdf(file, true);
+      }
+      rows.forEach(r => allRows.push({
+        id: uid(), selected: true,
+        part: r.part, qty: r.qty,
+        source: file.name, page: r.page || 1, method: r.method
+      }));
+    }
+    extractedRows = dedupeUiRows(allRows);
+    renderRows();
+    setStatus(extractedRows.length ? `✓ ${extractedRows.length} rows extracted` : 'No part numbers found.', extractedRows.length ? 'ok' : 'err');
+  } catch (err) {
+    console.error(err);
+    setStatus(`Error: ${err.message}`, 'err');
+  }
+
+  convertBtn.disabled = false;
+  updateControls();
+}
+
+function renderRows() {
+  previewBody.innerHTML = '';
+  extractedRows.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="checkbox" ${row.selected ? 'checked' : ''} data-action="toggle" data-id="${row.id}" /></td>
+      <td><input class="cell-input" type="text" value="${escAttr(row.part)}" data-action="part" data-id="${row.id}" /></td>
+      <td><input class="cell-input" type="text" value="${escAttr(row.qty)}" data-action="qty" data-id="${row.id}" /></td>
+      <td>${esc(row.source || '')}</td>
+      <td>${esc(String(row.page ?? ''))}</td>
+      <td class="muted">${esc(row.method || '')}</td>
+      <td><button class="row-remove" type="button" data-action="delete" data-id="${row.id}">✕</button></td>
+    `;
+    previewBody.appendChild(tr);
+  });
+  previewBody.querySelectorAll('input,button').forEach(el => {
+    el.addEventListener('input', handleRowEdit);
+    el.addEventListener('change', handleRowEdit);
+    el.addEventListener('click', handleRowEdit);
+  });
+  rowsPill.textContent = `${extractedRows.length} row${extractedRows.length === 1 ? '' : 's'}`;
+  selectedPill.textContent = `${extractedRows.filter(r => r.selected).length} selected`;
+  updateControls();
+}
+
+function handleRowEdit(e) {
+  const action = e.target.dataset.action;
+  const id = e.target.dataset.id;
+  if (!action || !id) return;
+  const row = extractedRows.find(r => r.id === id);
+  if (!row) return;
+  if (action === 'toggle') {
+    row.selected = e.target.checked;
+  } else if (action === 'part') {
+    row.part = e.target.value;
+  } else if (action === 'qty') {
+    row.qty = normaliseQtyInput(e.target.value);
+    e.target.value = row.qty;
+  } else if (action === 'delete') {
+    extractedRows = extractedRows.filter(r => r.id !== id);
+    renderRows();
+    return;
+  }
+  selectedPill.textContent = `${extractedRows.filter(r => r.selected).length} selected`;
+  rowsPill.textContent = `${extractedRows.length} row${extractedRows.length === 1 ? '' : 's'}`;
+  updateControls();
+}
+
+function updateControls() {
+  const hasFiles    = files.length > 0;
+  const hasRows     = extractedRows.length > 0;
+  const hasSelected = extractedRows.some(r => r.selected);
+  convertBtn.disabled      = !hasFiles;
+  saveBtn.disabled         = !hasSelected;
+  selectAllBtn.disabled    = !hasRows;
+  selectNoneBtn.disabled   = !hasRows;
+  deleteSelectedBtn.disabled = !hasSelected;
+  addBlankRowBtn.disabled  = !hasFiles && !hasRows;
+}
+
+function saveSelectedCsv() {
+  const rows = extractedRows
+    .filter(r => r.selected)
+    .map(r => ({ part: cleanPart(r.part), qty: cleanQty(r.qty), source: r.source }))
+    .filter(r => r.part && r.qty);
+
+  if (!rows.length) { setStatus('No valid selected rows to export.', 'err'); return; }
+
+  const csv = rows.map(r => `"${csvSafe(normalisePart(r.part))}",${csvSafe(r.qty)}`).join("\n");
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'parts_export.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setStatus(`✓ CSV exported with ${rows.length} rows`, 'ok');
+}
+
+// ─────────────────────────────────────────────────────────────────
+// CORE EXTRACTION
+// ─────────────────────────────────────────────────────────────────
+
+function isAcceptedFile(f) {
+  return /\.(pdf|xml|txt)$/i.test(f.name);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// XML EXTRACTOR — eBIS-XML format (Allspares)
+// Pulls SuppliersProductCode + Amount from each <OrderLine>
+// ─────────────────────────────────────────────────────────────────
+async function extractFromXml(file) {
+  const text = await file.text();
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(text, 'application/xml');
+
+  // Check for parse errors
+  const parseErr = doc.querySelector('parsererror');
+  if (parseErr) throw new Error('XML parse error: ' + parseErr.textContent.slice(0, 80));
+
+  const rows = [];
+  // Handle both namespaced and non-namespaced elements
+  const lines = doc.querySelectorAll('OrderLine');
+  lines.forEach(line => {
+    const partEl = line.querySelector('SuppliersProductCode');
+    const qtyEl  = line.querySelector('Amount');
+    if (!partEl || !qtyEl) return;
+    const part = normalisePart(cleanPart(partEl.textContent.trim()));
+    const qty  = cleanQty(qtyEl.textContent.trim());
+    if (part && qty) rows.push({ part, qty, page: 1, method: 'xml-ebis' });
+  });
+  return rows;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// TXT EXTRACTOR — Fixed-width text order (ABS Burton)
+// Rows start with a line number, then part number in fixed column
+// ─────────────────────────────────────────────────────────────────
+async function extractFromTxt(file) {
+  const text = await file.text();
+  const lines = text.split(/\r?\n/);
+  const rows = [];
+  let inData = false;
+
+  for (const line of lines) {
+    // Data section starts after the === / --- separator line
+    if (/^[-=]{10,}/.test(line.trim())) { inData = true; continue; }
+    if (!inData) continue;
+
+    // Stop at footer
+    if (/TOTAL\s+VALUES/i.test(line)) break;
+
+    // Skip blanks, separators, noise lines
+    if (!line.trim()) continue;
+    if (/^\s*\*{3}/.test(line)) continue;  // *** REPRINT ***
+
+    // Match data row: optional leading spaces, 1-2 digit line#, 2+ spaces, part number
+    const m = line.match(/^\s{0,4}(\d{1,2})\s{2,}([A-Z0-9][A-Z0-9.\-/_+#]*)\s/i);
+    if (!m) continue;
+
+    const part = normalisePart(cleanPart(m[2]));
+    const rest = line.slice(line.indexOf(m[2]) + m[2].length);
+
+    // Qty is the first plain integer found after the part number (not a price/decimal)
+    const nums = rest.match(/\b\d+\b/g);
+    const qty  = nums ? cleanQty(nums[0]) : null;
+
+    if (part && qty && qty !== m[1]) { // exclude line number itself
+      rows.push({ part, qty, page: 1, method: 'txt-abs' });
+    }
+  }
+  return rows;
+}
+
+async function extractFromPdf(file, debug = false) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const allRows = [];
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page    = await pdf.getPage(p);
+    const content = await page.getTextContent();
+
+    const items = content.items
+      .map(i => ({ text: String(i.str || '').trim(), x: Math.round(i.transform[4]), y: Math.round(i.transform[5]), width: Math.round(i.width || 0) }))
+      .filter(i => i.text !== '');
+
+    const lines    = clusterIntoLines(items);
+    const pageText = lines.map(joinLine).join(' | ').toUpperCase();
+    const layout   = detectLayout(pageText, lines);
+
+    if (debug) {
+      debugLog(`\n=== ${file.name} | page ${p} | layout=${layout} ===`);
+      lines.slice(0, 120).forEach((line, idx) => {
+        debugLog(`L${idx}: ${line.items.map(t => `[${t.text}@${t.x},${t.y}]`).join(' ')}`);
+      });
+    }
+
+    // KEY DESIGN: detectLayout picks ONE extractor. No multi-extractor stacking
+    // that causes duplicates. Generic fallback only tries alternatives if nothing found.
+    let rows = [];
+    switch (layout) {
+      case 'epicor-product-code':
+        rows = extractByEpicorProductCode(lines, debug);
+        break;
+      case 'partic-motor':
+        rows = extractByParticMotor(lines, debug);
+        break;
+      case 'napa':
+        rows = extractByNapa(lines, debug);
+        break;
+      case 'hgv-direct':
+        rows = extractByHgvDirectLayout(lines, debug);
+        break;
+      case 'hb-commercial':
+        rows = extractByHBCommercial(lines, debug);
+        break;
+      case 'martin-engineering':
+        rows = extractByMartinEngineering(lines, debug);
+        break;
+      case 'dingbro':
+        rows = extractByDingbro(lines, debug);
+        break;
+      case 'fleet-factors':
+        rows = extractByFleetFactors(lines, debug);
+        break;
+      case 'wrapped-product-code':
+        rows = extractByWrappedProductCode(lines, debug);
+        break;
+      case 'ln-qty-product':
+        rows = extractByLnQtyProduct(lines, debug);
+        break;
+      case 'item-code':
+        rows = extractByItemCodeLayout(lines, debug);
+        break;
+      default:
+        // Generic fallback: try in priority order, stop when something works
+        rows = extractByStrictRowPattern(lines, debug);
+        if (rows.length === 0) rows = extractByEpicorProductCode(lines, debug);
+        if (rows.length === 0) rows = extractByWrappedProductCode(lines, debug);
+        if (rows.length === 0) rows = extractByLnQtyProduct(lines, debug);
+        if (rows.length === 0) rows = extractByItemCodeLayout(lines, debug);
+        if (rows.length === 0) rows = extractByHeaderColumns(lines, debug);
+        if (rows.length === 0) rows = extractByLoosePattern(lines, debug);
+        break;
+    }
+
+    dedupeRows(rows, file.name).forEach(r => {
+      allRows.push({ part: r.part, qty: r.qty, page: p, method: r.method, source: file.name });
+    });
+  }
+
+  return dedupeRows(allRows, file.name);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// LAYOUT DETECTION
+// ─────────────────────────────────────────────────────────────────
+
+function detectLayout(pageText, lines) {
+  // Epicor-style: "Line Product Code Description Qty ..."
+  if (pageText.includes('LINE PRODUCT CODE DESCRIPTION QTY')) return 'epicor-product-code';
+
+  // Partic Motor: "LN NO QTY PART NUMBER DESCRIPTION"
+  if (pageText.includes('LN NO QTY PART NUMBER DESCRIPTION')) return 'partic-motor';
+
+  // NAPA: "LNO PART NUMBER DESCRIPTION QTY"
+  if (pageText.includes('LNO PART NUMBER DESCRIPTION QTY')) return 'napa';
+
+  // HGV Direct: "LNO PART NO DESCRIPTION LOCATION QTY"
+  if (pageText.includes('LNO PART NO DESCRIPTION LOCATION QTY')) return 'hgv-direct';
+
+  // HB Commercial: "QTY PART NO DESCRIPTION UNIT COST AMOUNT VAT"
+  if (pageText.includes('QTY PART NO DESCRIPTION UNIT COST AMOUNT VAT')) return 'hb-commercial';
+
+  // Martin Engineering: "PRODUCT CODE PRODUCT DESCRIPTION ORDERED UNIT PRICE TOTAL"
+  if (pageText.includes('PRODUCT CODE PRODUCT DESCRIPTION ORDERED UNIT PRICE TOTAL')) return 'martin-engineering';
+
+  // Dingbro: "Part No Qty Units Description Price Total S/C & Total Lno"
+  // Part number is FIRST column, qty SECOND, line number at far RIGHT end.
+  if (pageText.includes('PART NO') && pageText.includes('QTY') &&
+      pageText.includes('LNO') && pageText.includes('UNITS') &&
+      pageText.includes('DESCRIPTION')) return 'dingbro';
+
+  // Fleet Factors: "DESCRIPTION BIN GRP PART NO. QUANTITY PRICE SURCHARGE AMOUNT JOB"
+  // No line numbers; description first, then part number column further right.
+  if (pageText.includes('DESCRIPTION') && pageText.includes('PART NO') &&
+      pageText.includes('QUANTITY') && pageText.includes('SURCHARGE') &&
+      pageText.includes('AMOUNT') && pageText.includes('JOB')) return 'fleet-factors';
+
+  // LN QTY PRODUCT
+  if (pageText.includes('LN QTY PRODUCT DESCRIPTION')) return 'ln-qty-product';
+
+  // Item Code
+  if (pageText.includes('ITEM CODE DESCRIPTION QUANTITY')) return 'item-code';
+
+  return 'generic';
+}
+
+// ─────────────────────────────────────────────────────────────────
+// EXTRACTORS
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Epicor layout: Line# | ProductCode | Description (multi-word) | Qty | UnitCost | UnitTotal | S/C | S/CTotal | LineTotal
+ * Detection: "LINE PRODUCT CODE DESCRIPTION QTY"
+ * Strategy: tokens[0]=line#, tokens[1]=part, then find qty as integer followed by two decimal prices.
+ * Handles wrapped rows where prices land on the next line.
+ */
+function extractByEpicorProductCode(lines, debug = false) {
+  const rows = [];
+
+  for (let li = 0; li < lines.length; li++) {
+    const line   = lines[li];
+    const tokens = line.items.map(i => i.text).filter(Boolean);
+    const text   = joinLine(line);
+
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (tokens.length < 5) continue;
+    if (!/^\d{1,3}$/.test(tokens[0])) continue;
+
+    const part = cleanPart(tokens[1]);
+    if (!isLikelyPart(part)) continue;
+
+    // Look for qty: integer followed by two decimal-money tokens
+    let qty = findQtyBeforePrices(tokens);
+
+    // If not on this line, check next 1-2 lines (wrapped description)
+    if (!qty) {
+      for (let look = 1; look <= 2; look++) {
+        const nextLine = lines[li + look];
+        if (!nextLine) break;
+        const nextTokens = nextLine.items.map(i => i.text).filter(Boolean);
+        // Stop if next line is a new data row
+        if (nextTokens.length >= 2 && /^\d{1,3}$/.test(nextTokens[0]) && isLikelyPart(cleanPart(nextTokens[1]))) break;
+        qty = findQtyBeforePrices(nextTokens);
+        if (!qty && nextTokens.length >= 3 && isLikelyQtyToken(nextTokens[0]) && isLikelyDecimalMoney(nextTokens[1]) && isLikelyDecimalMoney(nextTokens[2])) {
+          qty = cleanQty(nextTokens[0]);
+        }
+        if (qty) break;
+      }
+    }
+
+    if (!qty) continue;
+
+    rows.push({ part, qty, method: 'epicor-product-code' });
+    if (debug) debugLog(`EPICOR → ${text} | qty=${qty}`);
+  }
+
+  return rows;
+}
+
+/**
+ * Partic Motor: LN# | Qty | PartNumber | Description
+ */
+function extractByParticMotor(lines, debug = false) {
+  const rows = [];
+  for (const line of lines) {
+    const tokens = line.items.map(i => i.text).filter(Boolean);
+    const text   = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (tokens.length < 4) continue;
+    if (!/^\d{1,3}$/.test(tokens[0])) continue;
+    if (!isLikelyQtyToken(tokens[1])) continue;
+    const qty  = cleanQty(tokens[1]);
+    const part = cleanPart(tokens[2]);
+    if (!isLikelyPart(part)) continue;
+    rows.push({ part, qty, method: 'partic-motor' });
+    if (debug) debugLog(`PARTIC → ${text}`);
+  }
+  return rows;
+}
+
+/**
+ * NAPA: LN# | PartNumber | Description | Qty | UnitPrice | Total
+ */
+function extractByNapa(lines, debug = false) {
+  const rows = [];
+  for (const line of lines) {
+    const tokens = line.items.map(i => i.text).filter(Boolean);
+    const text   = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (tokens.length < 5) continue;
+    if (!/^\d{1,3}$/.test(tokens[0])) continue;
+    const part = cleanPart(tokens[1]);
+    if (!isLikelyPart(part)) continue;
+    let qty = null;
+    for (let i = 2; i < tokens.length - 2; i++) {
+      if (isLikelyQtyToken(tokens[i]) && isLikelyDecimalMoney(tokens[i+1]) && isLikelyDecimalMoney(tokens[i+2])) {
+        qty = cleanQty(tokens[i]); break;
+      }
+    }
+    if (!qty) continue;
+    rows.push({ part, qty, method: 'napa' });
+    if (debug) debugLog(`NAPA → ${text}`);
+  }
+  return rows;
+}
+
+/**
+ * HGV Direct: LN# | PartNo | Description | Location | Qty | ...
+ * Qty is the penultimate integer in the row.
+ */
+function extractByHgvDirectLayout(lines, debug = false) {
+  const rows = [];
+  for (const line of lines) {
+    const tokens = line.items.map(i => i.text).filter(Boolean);
+    const text   = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (tokens.length < 4) continue;
+    if (!/^\d{1,3}$/.test(tokens[0])) continue;
+    const part = cleanPart(tokens[1]);
+    if (!isLikelyPart(part)) continue;
+    // Start from i=2 to skip the line# (i=0) and part# (i=1) slots.
+    // This prevents numeric part numbers (e.g. '1351') from polluting the integer scan
+    // and stops the qty==line# false-positive guard from firing on legitimate qty=1 rows.
+    const intPositions = tokens.reduce((acc, t, i) => { if (i >= 2 && /^\d{1,6}$/.test(t)) acc.push(i); return acc; }, []);
+    if (intPositions.length < 2) continue;
+    const penultimateIdx = intPositions[intPositions.length - 2];
+    const qty = cleanQty(tokens[penultimateIdx]);
+    if (!qty) continue;
+    rows.push({ part, qty, method: 'hgv-direct' });
+    if (debug) debugLog(`HGV-DIRECT → ${text}`);
+  }
+  return rows;
+}
+
+/**
+ * HB Commercial: Qty | PartNo | Description | UnitCost | Total | VAT | ...
+ * First token is qty (a number), second is part.
+ */
+function extractByHBCommercial(lines, debug = false) {
+  const rows = [];
+  for (const line of lines) {
+    const tokens = line.items.map(i => i.text).filter(Boolean);
+    const text   = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (tokens.length < 5) continue;
+    if (!isLikelyQtyToken(tokens[0])) continue;
+    const qty  = cleanQty(tokens[0]);
+    const part = cleanPart(tokens[1]);
+    if (!isLikelyPart(part)) continue;
+    rows.push({ part, qty, method: 'hb-commercial' });
+    if (debug) debugLog(`HB-COMMERCIAL → ${text}`);
+  }
+  return rows;
+}
+
+/**
+ * Martin Engineering: PartCode | Description | UOM | Qty | UnitPrice | Total
+ * First token is part, qty found after an integer UOM token.
+ */
+function extractByMartinEngineering(lines, debug = false) {
+  const rows = [];
+  for (const line of lines) {
+    const tokens = line.items.map(i => i.text).filter(Boolean);
+    const text   = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (tokens.length < 5) continue;
+    const part = cleanPart(tokens[0]);
+    if (!isLikelyPart(part)) continue;
+    let qty = null;
+    for (let i = 0; i < tokens.length - 3; i++) {
+      if (/^\d+$/.test(tokens[i]) && isLikelyQtyToken(tokens[i+1]) && isLikelyDecimalMoney(tokens[i+2]) && isLikelyDecimalMoney(tokens[i+3])) {
+        qty = cleanQty(tokens[i+1]); break;
+      }
+    }
+    if (!qty) continue;
+    rows.push({ part, qty, method: 'martin-engineering' });
+    if (debug) debugLog(`MARTIN → ${text}`);
+  }
+  return rows;
+}
+
+/**
+ * Dingbro layout: Part No | Qty | Units | Description | Price | Total | S/C | & | Total | Lno
+ * Part number is the FIRST column (leftmost), qty is SECOND column.
+ * Line number (Lno) is at the far RIGHT — opposite of every other format.
+ * No line numbers at the start of rows, so token[0] = part, token[1] = qty.
+ * Uses X-column positions from the header row for reliability.
+ */
+function extractByDingbro(lines, debug = false) {
+  // Find header row to get X positions
+  let headerIdx = -1, partX = null, qtyX = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const text = joinLine(lines[i]).toUpperCase();
+    if (text.includes('PART NO') && text.includes('QTY') && text.includes('LNO')) {
+      const partItem = lines[i].items.find(t => /PART/i.test(t.text));
+      const qtyItem  = lines[i].items.find(t => /^QTY$/i.test(t.text));
+      if (partItem && qtyItem) {
+        headerIdx = i;
+        partX = partItem.x;
+        qtyX  = qtyItem.x;
+        if (debug) debugLog(`DINGBRO header at L${i}: partX=${partX} qtyX=${qtyX}`);
+        break;
+      }
+    }
+  }
+
+  if (headerIdx === -1) {
+    // Fallback: no header found, try token[0]=part token[1]=qty directly
+    if (debug) debugLog('DINGBRO: no header found, using token fallback');
+    return extractByDingbroTokens(lines, debug);
+  }
+
+  const partBand = { min: partX - 15, max: partX + 160 };
+  const qtyBand  = { min: qtyX  - 15, max: qtyX  + 60  };
+  const rows = [];
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    const text = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (/TOTAL\s+UNITS|GOODS\s+TOTAL|S\/CHARGE/i.test(text)) continue;
+
+    const partCandidates = line.items
+      .filter(t => t.x >= partBand.min && t.x <= partBand.max)
+      .map(t => t.text.trim()).filter(isLikelyPart);
+
+    const qtyCandidates = line.items
+      .filter(t => t.x >= qtyBand.min && t.x <= qtyBand.max)
+      .map(t => t.text.trim()).filter(t => /^\d{1,6}$/.test(t));
+
+    if (!partCandidates.length || !qtyCandidates.length) continue;
+
+    rows.push({ part: cleanPart(partCandidates[0]), qty: cleanQty(qtyCandidates[0]), method: 'dingbro' });
+    if (debug) debugLog(`DINGBRO → part="${partCandidates[0]}" qty="${qtyCandidates[0]}" | ${text}`);
+  }
+
+  return rows;
+}
+
+function extractByDingbroTokens(lines, debug = false) {
+  // Token fallback: Part No is token[0], Qty is token[1]
+  // Qty must be an integer (not decimal) to avoid grabbing prices
+  const rows = [];
+  for (const line of lines) {
+    const tokens = line.items.map(i => i.text).filter(Boolean);
+    const text   = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (tokens.length < 3) continue;
+    const part = cleanPart(tokens[0]);
+    if (!isLikelyPart(part)) continue;
+    if (!/^\d{1,6}$/.test(tokens[1])) continue; // qty must be plain integer
+    rows.push({ part, qty: cleanQty(tokens[1]), method: 'dingbro-tokens' });
+    if (debug) debugLog(`DINGBRO-TOKENS → ${text}`);
+  }
+  return rows;
+}
+
+
+/**
+ *   Header: Description | Bin | Grp | Part No. | Quantity | Price | Surcharge | Amount | Job
+ *   Data rows have NO line numbers. Description starts at left (~x=35).
+ *   Part No. column is at a fixed X (~x=280-370). Quantity column further right (~x=430-470).
+ *
+ * Strategy: find the header line to get X positions of "Part No." and "Quantity",
+ * then for each data row extract tokens by column band.
+ *
+ * Special case: some part numbers are masked as "1321**************** [1321/1]"
+ * — the real part is in brackets at the end.
+ */
+function extractByFleetFactors(lines, debug = false) {
+  // Step 1: find header line and column X positions
+  let partNoX   = null;
+  let quantityX = null;
+  let headerIdx = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const text = joinLine(lines[i]).toUpperCase();
+    if (text.includes('PART NO') && text.includes('QUANTITY')) {
+      const partItem = lines[i].items.find(t => /PART\s*NO/i.test(t.text));
+      const qtyItem  = lines[i].items.find(t => /QUANTITY/i.test(t.text));
+      if (partItem && qtyItem) {
+        headerIdx = i;
+        partNoX   = partItem.x;
+        quantityX = qtyItem.x;
+        if (debug) debugLog(`FLEET-FACTORS header at L${i}: partNoX=${partNoX} quantityX=${quantityX}`);
+        break;
+      }
+    }
+  }
+
+  if (headerIdx === -1) {
+    if (debug) debugLog('FLEET-FACTORS: header not found');
+    return [];
+  }
+
+  const PART_BAND_W  = 120; // width to the right of Part No. header
+  const QTY_BAND_W   = 80;
+  const partBand  = { min: partNoX - 10, max: partNoX + PART_BAND_W };
+  const qtyBand   = { min: quantityX - 15, max: quantityX + QTY_BAND_W };
+
+  const rows = [];
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line   = lines[i];
+    const text   = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    // Skip pure footer/totals lines
+    if (/TOTAL\s+GOODS|TOTAL\s+VAT|TOTAL\s+INC|INSTRUCTIONS/i.test(text)) continue;
+
+    // Extract part number: tokens whose x falls in the Part No. column band
+    const partCandidates = line.items
+      .filter(t => t.x >= partBand.min && t.x <= partBand.max)
+      .map(t => t.text.trim())
+      .filter(Boolean);
+
+    // Extract quantity: tokens in the Quantity column band
+    const qtyCandidates = line.items
+      .filter(t => t.x >= qtyBand.min && t.x <= qtyBand.max)
+      .map(t => t.text.trim())
+      .filter(isLikelyQtyToken);
+
+    if (!partCandidates.length || !qtyCandidates.length) continue;
+
+    // Handle masked part numbers like "1321**** [1321/1]" — grab text in brackets
+    let rawPart = partCandidates.join('');
+    const bracketMatch = rawPart.match(/\[([^\]]+)\]/);
+    if (bracketMatch) rawPart = bracketMatch[1];
+
+    const part = cleanPart(rawPart);
+    if (!isLikelyPart(part)) {
+      if (debug) debugLog(`FLEET-FACTORS skip (not part): "${part}" from "${text}"`);
+      continue;
+    }
+
+    const qty = cleanQty(qtyCandidates[0]);
+    rows.push({ part, qty, method: 'fleet-factors' });
+    if (debug) debugLog(`FLEET-FACTORS → part="${part}" qty="${qty}" | ${text}`);
+  }
+
+  return rows;
+}
+
+/**
+ * Wrapped Product Code (Epicor variant where description wraps to next line).
+ * Same as epicor-product-code but used as generic fallback.
+ */
+function extractByWrappedProductCode(lines, debug = false) {
+  const rows = [];
+  for (let li = 0; li < lines.length; li++) {
+    const line   = lines[li];
+    const tokens = line.items.map(i => i.text).filter(Boolean);
+    const text   = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (tokens.length < 2) continue;
+    if (!/^\d{1,3}$/.test(tokens[0])) continue;
+    const part = cleanPart(tokens[1]);
+    if (!isLikelyPart(part)) continue;
+    let qty = findQtyBeforePrices(tokens);
+    if (!qty) {
+      for (let look = 1; look <= 2; look++) {
+        const nextLine = lines[li + look];
+        if (!nextLine) break;
+        const nextTokens = nextLine.items.map(i => i.text).filter(Boolean);
+        if (nextTokens.length >= 2 && /^\d{1,3}$/.test(nextTokens[0]) && isLikelyPart(cleanPart(nextTokens[1]))) break;
+        qty = findQtyBeforePrices(nextTokens);
+        if (!qty && nextTokens.length >= 3 && isLikelyQtyToken(nextTokens[0]) && isLikelyDecimalMoney(nextTokens[1]) && isLikelyDecimalMoney(nextTokens[2])) {
+          qty = cleanQty(nextTokens[0]);
+        }
+        if (qty) break;
+      }
+    }
+    if (!qty) continue;
+    rows.push({ part, qty, method: 'wrapped-product-code' });
+    if (debug) debugLog(`WRAPPED → ${text} | qty=${qty}`);
+  }
+  return rows;
+}
+
+/**
+ * LN QTY PRODUCT: LN# | Qty | ProductCode | Description
+ */
+function extractByLnQtyProduct(lines, debug = false) {
+  const rows = [];
+  for (const line of lines) {
+    const tokens = line.items.map(i => i.text).filter(Boolean);
+    const text   = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (tokens.length < 5) continue;
+    if (!/^\d{1,3}$/.test(tokens[0])) continue;
+    if (!isLikelyQtyToken(tokens[1])) continue;
+    const qty  = cleanQty(tokens[1]);
+    const part = cleanPart(tokens[2]);
+    if (!isLikelyPart(part)) continue;
+    rows.push({ part, qty, method: 'ln-qty-product' });
+    if (debug) debugLog(`LN-QTY-PRODUCT → ${text}`);
+  }
+  return rows;
+}
+
+/**
+ * Item Code layout: PartCode | Description | Qty | UOM | Price | ...
+ * First token is part, qty found before a UOM word or scanning backwards.
+ */
+function extractByItemCodeLayout(lines, debug = false) {
+  const rows = [];
+  for (const line of lines) {
+    const tokens = line.items.map(i => i.text).filter(Boolean);
+    const text   = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (tokens.length < 5) continue;
+    const part = cleanPart(tokens[0]);
+    if (!isLikelyPart(part)) continue;
+    let qty = null;
+    for (let i = 1; i < tokens.length - 1; i++) {
+      if (isLikelyQtyToken(tokens[i]) && /^(EACH|EA|PCS|PC|MTR|METRE|METRES)$/i.test(tokens[i+1])) {
+        qty = cleanQty(tokens[i]); break;
+      }
+    }
+    if (!qty) {
+      for (let i = tokens.length - 3; i >= 1; i--) {
+        if (isLikelyQtyToken(tokens[i])) { qty = cleanQty(tokens[i]); break; }
+      }
+    }
+    if (!qty) continue;
+    rows.push({ part, qty, method: 'item-code' });
+    if (debug) debugLog(`ITEM-CODE → ${text}`);
+  }
+  return rows;
+}
+
+/**
+ * Strict row pattern (generic): LN# | PartNo | Description... | Qty (last integer before prices)
+ */
+function extractByStrictRowPattern(lines, debug = false) {
+  const rows = [];
+  for (const line of lines) {
+    const tokens = line.items.map(i => i.text).filter(Boolean);
+    const text   = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (tokens.length < 4) continue;
+    if (!/^\d{1,3}$/.test(tokens[0])) continue;
+    const part = cleanPart(tokens[1]);
+    if (!isLikelyPart(part)) continue;
+    let qty = null;
+    for (let i = tokens.length - 3; i >= 2; i--) {
+      if (/^\d{1,6}$/.test(tokens[i])) { qty = cleanQty(tokens[i]); break; }
+    }
+    if (!qty) continue;
+    rows.push({ part, qty, method: 'strict-row' });
+    if (debug) debugLog(`STRICT → ${text}`);
+  }
+  return rows;
+}
+
+/**
+ * Header columns: generic column-position extractor based on header row X positions.
+ */
+function extractByHeaderColumns(lines, debug = false) {
+  let headerIdx = -1, partX = null, qtyX = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const text   = joinLine(lines[i]).toUpperCase();
+    const hasPart = /PART|ITEM\s*CODE|PRODUCT/.test(text);
+    // Accept both QTY and QUANTITY
+    const hasQty  = /\bQTY\b|\bQUANTITY\b|\bQTY\s+ORDERED\b/.test(text);
+    if (!hasPart || !hasQty) continue;
+    const partItem = lines[i].items.find(t => /PART|ITEM|PRODUCT/i.test(t.text));
+    const qtyItem  = lines[i].items.find(t => /QTY|QUANTITY/i.test(t.text));
+    if (partItem && qtyItem) {
+      headerIdx = i; partX = partItem.x; qtyX = qtyItem.x;
+      break;
+    }
+  }
+
+  if (headerIdx === -1) return [];
+
+  const rows = [];
+  const partBand = { min: partX - 20, max: partX + 180 };
+  const qtyBand  = { min: qtyX  - 20, max: qtyX  + 100 };
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    const text = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    const partCandidates = line.items
+      .filter(t => t.x >= partBand.min && t.x <= partBand.max)
+      .map(t => t.text).filter(t => !/^\(TUB/i.test(t)).filter(isLikelyPart);
+    const qtyCandidates = line.items
+      .filter(t => t.x >= qtyBand.min && t.x <= qtyBand.max)
+      .map(t => t.text).filter(isLikelyQtyToken);
+    if (!partCandidates.length || !qtyCandidates.length) continue;
+    rows.push({ part: cleanPart(partCandidates[0]), qty: cleanQty(qtyCandidates[0]), method: 'header-columns' });
+    if (debug) debugLog(`HEADER → ${text}`);
+  }
+
+  return rows;
+}
+
+/**
+ * Loose safe: last-resort, LN# then either Qty|Part or Part|...Qty
+ */
+function extractByLoosePattern(lines, debug = false) {
+  const rows = [];
+  for (const line of lines) {
+    const tokens = line.items.map(i => i.text).filter(Boolean);
+    const text   = joinLine(line);
+    if (!text || isHeaderOrNoise(text)) continue;
+    if (isFooterLine(text)) break;
+    if (tokens.length < 3) continue;
+    if (!/^\d{1,3}$/.test(tokens[0])) continue;
+    let part = null, qty = null;
+    if (isLikelyQtyToken(tokens[1]) && tokens[2]) {
+      qty  = cleanQty(tokens[1]);
+      part = cleanPart(tokens[2]);
+    } else {
+      part = cleanPart(tokens[1]);
+      for (let i = 2; i < tokens.length; i++) {
+        if (isLikelyQtyToken(tokens[i])) { qty = cleanQty(tokens[i]); break; }
+      }
+    }
+    if (!isLikelyPart(part) || !qty) continue;
+    rows.push({ part, qty, method: 'loose-safe' });
+    if (debug) debugLog(`LOOSE → ${text}`);
+  }
+  return rows;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────
+
+function clusterIntoLines(items) {
+  const sorted = [...items].sort((a, b) => Math.abs(b.y - a.y) > 3 ? b.y - a.y : a.x - b.x);
+  const lines  = [];
+  const Y_TOL  = 4;
+  for (const item of sorted) {
+    let match = lines.find(l => Math.abs(l.y - item.y) <= Y_TOL);
+    if (!match) { match = { y: item.y, items: [] }; lines.push(match); }
+    match.items.push(item);
+    match.y = Math.round(match.items.reduce((s, it) => s + it.y, 0) / match.items.length);
+  }
+  lines.sort((a, b) => b.y - a.y);
+  lines.forEach(l => l.items.sort((a, b) => a.x - b.x));
+  return lines;
+}
+
+function joinLine(line) {
+  return line.items.map(i => i.text).join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function isFooterLine(text) {
+  // Explicit total/subtotal footer patterns
+  if (/GOODS\s+TOTAL|SURCH\s+TOTAL|NET\s+VALUE|GRAND\s+TOTAL|TOTAL\s+VALUE|VAT\s+TOTAL|SUBTOTAL|SUB-TOTAL/i.test(text)) return true;
+  // "Total 1481.33" or "Total Units: 38 Goods Total:..." — standalone total line with a digit
+  if (/^\s*Total\s+\d/i.test(text)) return true;
+  // VAT as a value line (e.g. "VAT 246.89", "VAT VAT 246.89") but NOT label lines like
+  // "VAT No.", "VAT Reg. No.", "VAT NUMBER" which appear in supplier headers.
+  if (/^\s*VAT\b/i.test(text) && !/VAT\s+(?:Reg|No|Number)/i.test(text)) return true;
+  return false;
+}
+
+function isHeaderOrNoise(text) {
+  const t = text.toUpperCase();
+  return (
+    t.includes('PURCHASE ORDER') ||
+    t.includes('ORDER NO') ||
+    t.includes('DATE REQUIRED') ||
+    t.includes('DUE DATE') ||
+    t.includes('SUPPLIER:') ||
+    t.includes('SUPPLIER NO') ||
+    t.includes('DELIVERY ADDRESS') ||
+    t.includes('INVOICE ADDRESS') ||
+    t.includes('ORDERING BRANCH:') ||
+    t.includes('PLEASE SEND THE ORDER CONFIRMATION') ||
+    t.includes('DISCREPANCIES OR CARRIAGE CHARGES') ||
+    t.includes('PART NUMBER DESCRIPTION QTY') ||
+    t.includes('PART NO') ||
+    t.includes('ITEM CODE DESCRIPTION QUANTITY') ||
+    t.includes('ITEM CODE') ||
+    t.includes('LN QTY PRODUCT DESCRIPTION') ||
+    t.includes('LINE PRODUCT CODE DESCRIPTION QTY') ||
+    t.includes('PRODUCT DESCRIPTION') ||
+    t.includes('PRODUCT CODE') ||
+    t.includes('QTY ORDERED') ||
+    t.includes('UNIT OF MEASURE') ||
+    t.includes('GOODS TOTAL') ||
+    t.includes('VAT TOTAL') ||
+    t.includes('GRAND TOTAL') ||
+    t.includes('CV ORDERING') ||
+    t.includes('LOCATION QTY') ||
+    t.includes('AMOUNT VAT') ||
+    t.includes('LINE PART NO') ||
+    t.includes('LNO PART NO') ||
+    t.includes('LN NO QTY PART NUMBER DESCRIPTION') ||
+    t.includes('FOR STOCK') ||
+    t.includes('INSTRUCTIONS :') ||
+    // Dingbro header line
+    (t.includes('PART NO') && t.includes('QTY') && t.includes('LNO') && t.includes('UNITS')) ||
+    // Fleet Factors header line
+    (t.includes('DESCRIPTION') && t.includes('BIN') && t.includes('GRP') && t.includes('PART NO') && t.includes('QUANTITY'))
+  );
+}
+
+function findQtyBeforePrices(tokens) {
+  if (!tokens || tokens.length < 3) return null;
+  for (let i = 0; i < tokens.length - 2; i++) {
+    if (isLikelyQtyToken(tokens[i]) && isLikelyDecimalMoney(tokens[i+1]) && isLikelyDecimalMoney(tokens[i+2])) {
+      return cleanQty(tokens[i]);
+    }
+  }
+  return null;
+}
+
+function isLikelyQtyToken(text) {
+  return /^\d+(?:\.\d+)?$/.test(String(text).trim().replace(/,/g, ''));
+}
+
+function isLikelyDecimalMoney(text) {
+  return /^\d+(?:\.\d{1,2})?$/.test(String(text).trim().replace(/,/g, ''));
+}
+
+function isLikelyPart(text) {
+  const t = cleanPart(text);
+  if (!t) return false;
+  if (t.length < 2) return false;
+  if (/\s/.test(t)) return false;
+  if (/^TUB$/i.test(t)) return false;
+  if (/^TUB\d+$/i.test(t)) return true;  // TUB01, TUB14 etc. are bin codes, NOT part numbers
+  if (/^\(.*\)$/.test(text)) return false;
+  if (/^\d+$/.test(t) && !/^\d{3,}$/.test(t)) return false;
+  if (/^(PART|NUMBER|DESCRIPTION|QTY|QUANTITY|UNIT|PRICE|VALUE|TOTAL|GOODS|SURCH|FEMALE|MALE|STRAIGHT|PLUG|STUD|TEE|ELBOW|VALVE|ITEM|PRODUCT|EACH|EA|PCS|PC|MTR|METRE|METRES|LINE|CODE|LOCATION|SWIVE|CONN|CONNECTOR|BRASS|BLACK|NYLON|AMOUNT|VAT|ORDERED|MEASURE|COST|SHOP|RACK|BIN|GRP|JOB|STOCK)$/i.test(t)) return false;
+  if (/^(NOLOCA|C\/W|BUL|CAMOZZI)$/i.test(t)) return false;
+  if (!/^[A-Z0-9][A-Z0-9.\-\/_+#*\[\]]*$/i.test(t)) return false;
+  const hasLetter = /[A-Z]/i.test(t);
+  const hasDigit  = /\d/.test(t);
+  if (hasLetter && hasDigit) return true;
+  if (!hasLetter && /^\d{3,}$/.test(t)) return true;
+  // Numeric part numbers with separators: 8000.6, 1331/1, etc.
+  if (!hasLetter && /^\d{2,}[./\-]\d+$/.test(t) && t.length >= 4) return true;
+  return false;
+}
+
+function cleanPart(text) {
+  return String(text || '').trim().replace(/[,"""]/g, '').replace(/[()]/g, '').replace(/\s+/g, '');
+}
+
+function normalisePart(part) {
+  // 1. Strip known supplier prefixes (TUB, TGL, TG — longest first)
+  const prefixMatch = part.match(/^(TUB|TGL|TG)(.+)$/i);
+  if (prefixMatch && prefixMatch[2].length >= 2) {
+    part = prefixMatch[2];
+  }
+  // 2. Pad 3-digit numeric part numbers with a leading zero (e.g. 920 -> 0920)
+  if (/^\d{3}$/.test(part)) {
+    part = '0' + part;
+  }
+  return part;
+}
+
+function cleanQty(text) {
+  const s = String(text || '').trim().replace(/,/g, '');
+  const m = s.match(/^\d+(?:\.\d+)?/);
+  return m ? m[0] : '';
+}
+
+function normaliseQtyInput(text) { return cleanQty(text); }
+
+function dedupeRows(rows, source = '') {
+  const seen = new Set();
+  return rows.filter((row, idx) => {
+    // Include idx so the same part+qty appearing on genuinely different order lines
+    // (e.g. two separate lines for R10032200 x20) are not incorrectly dropped.
+    // We still dedupe exact same-page same-index duplicates that arise from extractor overlap.
+    const key = `${source}|${row.page ?? ''}|${idx}|${row.part}|${row.qty}|${row.method ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function dedupeUiRows(rows) {
+  const seen = new Set();
+  return rows.filter((row, idx) => {
+    const key = `${row.source}|${row.page}|${idx}|${row.part}|${row.qty}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function csvSafe(s) { return String(s).replace(/"/g, '""'); }
+
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function uid() { return 'r_' + Math.random().toString(36).slice(2, 10); }
+function debugLog(msg) { debugOut.textContent += msg + '\n'; }
+function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = cls || ''; }
+
+updateControls();
+</script>
+</body>
+</html>
